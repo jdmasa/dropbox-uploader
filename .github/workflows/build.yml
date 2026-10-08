@@ -1,0 +1,102 @@
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: "1.25"
+  NODE_VERSION: "22"
+  WAILS_VERSION: "v2.16.0"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Unit tests
+        run: go test -race ./internal/...
+      - name: Vet (Windows build)
+        run: GOOS=windows go vet ./internal/...
+
+  build-windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Wails and NSIS
+        shell: pwsh
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) { choco install nsis -y --no-progress }
+          "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Work out version
+        id: ver
+        shell: pwsh
+        run: |
+          if ("${{ github.ref_type }}" -eq "tag") { $v = "${{ github.ref_name }}".TrimStart("v") }
+          else { $v = "0.0.0" }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          # The installer and the .exe properties use productVersion from wails.json.
+          $cfg = Get-Content wails.json -Raw | ConvertFrom-Json
+          $cfg.info.productVersion = $v
+          $cfg | ConvertTo-Json -Depth 10 | Set-Content wails.json -Encoding utf8
+
+      - name: Build installer and app
+        shell: pwsh
+        env:
+          # The Dropbox App key is public (PKCE, no secret). Set it as a repository
+          # variable or secret named DROPBOX_APP_KEY so it is built into the app.
+          DROPBOX_APP_KEY: ${{ vars.DROPBOX_APP_KEY || secrets.DROPBOX_APP_KEY }}
+        run: |
+          $ldflags = "-X main.version=${{ steps.ver.outputs.version }} -X main.dropboxAppKey=$env:DROPBOX_APP_KEY"
+          wails build -clean -platform windows/amd64 -nsis -trimpath -ldflags "$ldflags"
+          Get-ChildItem build/bin
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist-release | Out-Null
+          $v = "${{ steps.ver.outputs.version }}"
+          Copy-Item build/bin/DropboxUploader-amd64-installer.exe "dist-release/DropboxUploader-Setup-$v.exe"
+          Copy-Item build/bin/DropboxUploader.exe "dist-release/DropboxUploader-portable-$v.exe"
+          Get-ChildItem dist-release | ForEach-Object {
+            (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower() + "  " + $_.Name
+          } | Out-File dist-release/SHA256SUMS.txt -Encoding ascii
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DropboxUploader-windows
+          path: dist-release/*
+
+      - name: Publish GitHub release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-release/*
+          generate_release_notes: true
+          body: |
+            ## Download
+
+            - **DropboxUploader-Setup-${{ steps.ver.outputs.version }}.exe**: installer (recommended). Adds a Start menu and desktop shortcut.
+            - **DropboxUploader-portable-${{ steps.ver.outputs.version }}.exe**: single file, no installation.
+
+            Windows may show "Windows protected your PC" because the app is not code-signed:
+            click **More info** → **Run anyway**.
