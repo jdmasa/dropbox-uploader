@@ -19,8 +19,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: Unit tests
@@ -32,11 +32,11 @@ jobs:
     needs: test
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -77,11 +77,12 @@ jobs:
           $v = "${{ steps.ver.outputs.version }}"
           Copy-Item build/bin/DropboxUploader-amd64-installer.exe "dist-release/DropboxUploader-Setup-$v.exe"
           Copy-Item build/bin/DropboxUploader.exe "dist-release/DropboxUploader-portable-$v.exe"
-          Get-ChildItem dist-release | ForEach-Object {
+          $sums = Get-ChildItem dist-release -Filter *.exe | ForEach-Object {
             (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower() + "  " + $_.Name
-          } | Out-File dist-release/SHA256SUMS.txt -Encoding ascii
+          }
+          $sums | Set-Content dist-release/SHA256SUMS.txt -Encoding ascii
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: DropboxUploader-windows
           path: dist-release/*
