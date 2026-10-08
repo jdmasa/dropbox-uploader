@@ -67,7 +67,7 @@ A portable single `.exe` is also attached to each release.
 
 ## Development
 
-Requirements: Go 1.25+, Node 20+, and the Wails CLI (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0`).
+Requirements: Go 1.26+, Node 20+, and the Wails CLI (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0`).
 
 ```sh
 wails dev                       # live-reloading dev build (macOS/Windows)
