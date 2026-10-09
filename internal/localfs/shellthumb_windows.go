@@ -99,11 +99,17 @@ func shellThumbOnThread(path string, size int) (image.Image, error) {
 	vtbl := *(**[4]uintptr)(factory)
 	defer syscall.SyscallN(vtbl[2], uintptr(factory)) // Release
 
-	// GetImage(SIZE size, SIIGBF flags, HBITMAP *phbm). An 8-byte SIZE struct is passed in one register.
-	sizeArg := uintptr(uint32(size)) | uintptr(uint32(size))<<32
+	// GetImage(SIZE size, SIIGBF flags, HBITMAP *phbm). The 8-byte SIZE struct is passed by
+	// value: packed into one register on 64-bit Windows, as two stack words on 32-bit.
 	var hbmp windows.Handle
-	hr, _, _ = syscall.SyscallN(vtbl[3], uintptr(factory), sizeArg,
-		siigbfBiggerSizeOK|siigbfThumbnailOnly, uintptr(unsafe.Pointer(&hbmp)))
+	args := []uintptr{uintptr(factory)}
+	if unsafe.Sizeof(uintptr(0)) == 8 {
+		args = append(args, uintptr(uint64(uint32(size))|uint64(uint32(size))<<32))
+	} else {
+		args = append(args, uintptr(size), uintptr(size))
+	}
+	args = append(args, siigbfBiggerSizeOK|siigbfThumbnailOnly, uintptr(unsafe.Pointer(&hbmp)))
+	hr, _, _ = syscall.SyscallN(vtbl[3], args...)
 	if hr != 0 || hbmp == 0 {
 		return nil, fmt.Errorf("GetImage: 0x%x", hr)
 	}

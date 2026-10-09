@@ -16,6 +16,7 @@ type Config struct {
 	AccountName  string `json:"accountName,omitempty"`
 	AccountEmail string `json:"accountEmail,omitempty"`
 
+	Lang        string `json:"lang,omitempty"`
 	Workers     int    `json:"workers"`
 	LastLocal   string `json:"lastLocal,omitempty"`
 	LastDropbox string `json:"lastDropbox,omitempty"`
@@ -60,6 +61,9 @@ func Load() *Store {
 	}
 	if s.cfg.Workers < 1 || s.cfg.Workers > 8 {
 		s.cfg.Workers = 4
+	}
+	if s.cfg.Lang == "" {
+		s.cfg.Lang = "ca"
 	}
 	if s.cfg.ViewMode == "" {
 		s.cfg.ViewMode = "grid"

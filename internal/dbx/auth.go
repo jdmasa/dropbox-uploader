@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"dropboxuploader/internal/i18n"
 )
 
 const (
@@ -72,7 +74,9 @@ func (t *Tokens) Invalidate() {
 	t.mu.Unlock()
 }
 
-var ErrNotLoggedIn = errors.New("not connected to Dropbox")
+// ErrNotLoggedIn and the other "err.*" messages are translation keys; the UI
+// shows them in the user's language ("err.key|detail" carries a parameter).
+var ErrNotLoggedIn = errors.New("err.notConnected")
 
 type tokenResponse struct {
 	AccessToken  string `json:"access_token"`
@@ -102,7 +106,7 @@ func postToken(ctx context.Context, hc *http.Client, form url.Values) (*tokenRes
 		if tr.Error == "invalid_grant" {
 			return nil, ErrNotLoggedIn
 		}
-		return nil, fmt.Errorf("dropbox login failed: %s %s", tr.Error, tr.ErrorDesc)
+		return nil, fmt.Errorf("err.loginFailed|%s %s", tr.Error, tr.ErrorDesc)
 	}
 	return &tr, nil
 }
@@ -110,7 +114,7 @@ func postToken(ctx context.Context, hc *http.Client, form url.Values) (*tokenRes
 // Login runs the OAuth2 PKCE flow: it starts a temporary listener on localhost,
 // calls openURL with Dropbox's sign-in page and waits for the redirect.
 // It returns the refresh token.
-func Login(ctx context.Context, appKey string, openURL func(string)) (string, error) {
+func Login(ctx context.Context, appKey, lang string, openURL func(string)) (string, error) {
 	verifier := randomString(64)
 	sum := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
@@ -127,17 +131,17 @@ func Login(ctx context.Context, appKey string, openURL func(string)) (string, er
 		var res result
 		switch {
 		case q.Get("state") != state:
-			res.err = errors.New("unexpected login response")
+			res.err = errors.New("err.loginFailed|state mismatch")
 		case q.Get("error") != "":
-			res.err = fmt.Errorf("Dropbox access was not granted (%s)", q.Get("error"))
+			res.err = errors.New("err.loginDenied")
 		default:
 			res.code = q.Get("code")
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if res.err != nil {
-			fmt.Fprint(w, loginPage("Something went wrong", "Please go back to Dropbox Uploader and try again."))
+			fmt.Fprint(w, loginPage(lang, i18n.T(lang, "login.errTitle"), i18n.T(lang, "login.errText")))
 		} else {
-			fmt.Fprint(w, loginPage("All set!", "You can close this browser tab and go back to Dropbox Uploader."))
+			fmt.Fprint(w, loginPage(lang, i18n.T(lang, "login.okTitle"), i18n.T(lang, "login.okText")))
 		}
 		select {
 		case done <- res:
@@ -154,7 +158,7 @@ func Login(ctx context.Context, appKey string, openURL func(string)) (string, er
 		}
 	}
 	if len(listeners) == 0 {
-		return "", fmt.Errorf("could not open port %d for the Dropbox login; is another copy of the app running?", RedirectPort)
+		return "", fmt.Errorf("err.loginPort|%d", RedirectPort)
 	}
 	defer srv.Close()
 
@@ -175,7 +179,7 @@ func Login(ctx context.Context, appKey string, openURL func(string)) (string, er
 	case <-ctx.Done():
 		return "", ctx.Err()
 	case <-time.After(10 * time.Minute):
-		return "", errors.New("login timed out")
+		return "", errors.New("err.loginTimeout")
 	}
 	if res.err != nil {
 		return "", res.err
@@ -191,7 +195,7 @@ func Login(ctx context.Context, appKey string, openURL func(string)) (string, er
 		return "", err
 	}
 	if tr.RefreshToken == "" {
-		return "", errors.New("Dropbox did not return a refresh token")
+		return "", errors.New("err.loginFailed|no refresh token")
 	}
 	return tr.RefreshToken, nil
 }
@@ -202,8 +206,8 @@ func randomString(n int) string {
 	return base64.RawURLEncoding.EncodeToString(b)[:n]
 }
 
-func loginPage(title, msg string) string {
-	return `<!doctype html><html><head><meta charset="utf-8"><title>Dropbox Uploader</title>
+func loginPage(lang, title, msg string) string {
+	return `<!doctype html><html lang="` + lang + `"><head><meta charset="utf-8"><title>Dropbox Uploader</title>
 <style>body{font-family:Segoe UI,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f4f6fa;color:#1d2433}
 .card{background:#fff;padding:40px 56px;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.08);text-align:center}h1{font-size:28px;margin:0 0 12px}p{font-size:18px;margin:0}</style>
 </head><body><div class="card"><h1>` + title + `</h1><p>` + msg + `</p></div></body></html>`

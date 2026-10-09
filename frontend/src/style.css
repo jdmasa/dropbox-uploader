@@ -256,7 +256,9 @@ code { background: var(--bg); padding: 1px 6px; border-radius: 4px; user-select:
 .input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 
 #welcome { background: var(--bg); }
-.dialog.welcome { width: min(560px, 92vw); text-align: center; padding: 44px 48px 36px; }
+.dialog.welcome { position: relative; width: min(560px, 92vw); text-align: center; padding: 44px 48px 36px; }
+.welcome-lang { position: absolute; top: 14px; right: 16px; display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.welcome-lang select, #language { height: 32px; border: 1px solid var(--line-strong); border-radius: 7px; padding: 0 6px; background: var(--panel); }
 .welcome-icon .ico { width: 64px; height: 64px; color: var(--accent); }
 .welcome h1 { font-size: 26px; margin: 12px 0 8px; }
 .welcome > p { font-size: 16.5px; color: var(--muted); }

@@ -52,22 +52,17 @@ func drives() []Place {
 		root := letter + `:\`
 		rootPtr, _ := windows.UTF16PtrFromString(root)
 		icon := "drive"
-		kind := "Local Disk"
 		switch windows.GetDriveType(rootPtr) {
 		case windows.DRIVE_REMOVABLE:
-			icon, kind = "usb", "USB Drive"
+			icon = "usb"
 		case windows.DRIVE_REMOTE:
-			icon, kind = "network", "Network Drive"
+			icon = "network"
 		case windows.DRIVE_CDROM:
 			continue
 		case windows.DRIVE_NO_ROOT_DIR, windows.DRIVE_UNKNOWN:
 			continue
 		}
-		label := volumeLabel(rootPtr)
-		if label == "" {
-			label = kind
-		}
-		out = append(out, Place{Name: label + " (" + letter + ":)", Path: root, Icon: icon})
+		out = append(out, Place{Name: volumeLabel(rootPtr), Path: root, Icon: icon, Drive: true, Letter: letter})
 	}
 	return out
 }

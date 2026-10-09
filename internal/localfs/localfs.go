@@ -182,10 +182,14 @@ func splitNum(s string) (string, string) {
 }
 
 // Place is a shortcut shown at the top of the left panel (drive or known folder).
+// For known folders the UI shows a translated name based on Icon; for drives
+// it shows Name (the volume label, may be empty) and Letter.
 type Place struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
-	Icon string `json:"icon"` // home, desktop, pictures, videos, downloads, documents, drive, usb, network
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Icon   string `json:"icon"` // home, desktop, pictures, videos, downloads, documents, drive, usb, network
+	Drive  bool   `json:"drive"`
+	Letter string `json:"letter,omitempty"`
 }
 
 // Places returns the user's common folders followed by the drives.

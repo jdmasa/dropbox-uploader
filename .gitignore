@@ -4,3 +4,4 @@ frontend/dist
 frontend/wailsjs
 frontend/package.json.md5
 .DS_Store
+build/windows/installer/tmp

@@ -38,6 +38,7 @@ const P = {
   drive: '<rect x="2" y="13" width="20" height="7" rx="2"/><path d="M5 13 7.5 5h9L19 13"/><circle cx="17" cy="16.5" r=".8"/>',
   usb: '<rect x="7" y="9" width="10" height="13" rx="2"/><path d="M9 9V3h6v6M11 5h.01M13 5h.01"/>',
   network: '<rect x="3" y="3" width="18" height="7" rx="1.5"/><path d="M12 10v5M5 19h14M12 15v4"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
   play2: '<circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4z"/>',
 };
 

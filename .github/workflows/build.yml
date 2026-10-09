@@ -30,19 +30,29 @@ jobs:
   build-windows:
     needs: test
     runs-on: windows-latest
+    env:
+      # Go 1.21+ dropped Windows 7/8/8.1. go-legacy-win7 is current Go patched to
+      # keep supporting them, so the app runs on Windows 7 SP1, 8.1, 10 and 11.
+      LEGACY_GO: "1.26.8-1"
+      GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install Wails and NSIS
+      - name: Install Go (go-legacy-win7), Wails and NSIS
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+          gh release download "v$env:LEGACY_GO" -R thongtech/go-legacy-win7 -p "go-legacy-win7-$env:LEGACY_GO.windows_amd64.zip" -D $env:RUNNER_TEMP
+          Expand-Archive "$env:RUNNER_TEMP\go-legacy-win7-$env:LEGACY_GO.windows_amd64.zip" -DestinationPath C:\golegacy
+          $goroot = (Get-ChildItem C:\golegacy -Directory | Select-Object -First 1).FullName
+          "$goroot\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          "$env:USERPROFILE\go\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          & "$goroot\bin\go.exe" version
+          & "$goroot\bin\go.exe" install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
           if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) { choco install nsis -y --no-progress }
           "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Append
 
@@ -53,29 +63,43 @@ jobs:
           if ("${{ github.ref_type }}" -eq "tag") { $v = "${{ github.ref_name }}".TrimStart("v") }
           else { $v = "0.0.0" }
           "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          # The installer and the .exe properties use productVersion from wails.json.
+          # The .exe properties use productVersion from wails.json.
           $cfg = Get-Content wails.json -Raw | ConvertFrom-Json
           $cfg.info.productVersion = $v
           $cfg | ConvertTo-Json -Depth 10 | Set-Content wails.json -Encoding utf8
 
-      - name: Build installer and app
+      - name: Build 64-bit and 32-bit app
         shell: pwsh
         env:
           # The Dropbox App key is public (PKCE, no secret). Set it as a repository
           # variable or secret named DROPBOX_APP_KEY so it is built into the app.
           DROPBOX_APP_KEY: ${{ vars.DROPBOX_APP_KEY || secrets.DROPBOX_APP_KEY }}
         run: |
+          go version
           $ldflags = "-X main.version=${{ steps.ver.outputs.version }} -X main.dropboxAppKey=$env:DROPBOX_APP_KEY"
-          wails build -clean -platform windows/amd64 -nsis -trimpath -ldflags "$ldflags"
+          wails build -clean -platform windows/amd64 -trimpath -o DropboxUploader-x64.exe -ldflags "$ldflags"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          wails build -skipbindings -platform windows/386 -trimpath -o DropboxUploader-x86.exe -ldflags "$ldflags"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           Get-ChildItem build/bin
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build/windows/installer/tmp | Out-Null
+          Invoke-WebRequest "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile build/windows/installer/tmp/MicrosoftEdgeWebview2Setup.exe
+          $v = "${{ steps.ver.outputs.version }}"
+          makensis /V3 "/DVERSION=$v" "/DX64_BINARY=..\..\bin\DropboxUploader-x64.exe" "/DX86_BINARY=..\..\bin\DropboxUploader-x86.exe" "/DOUTFILE=..\..\bin\DropboxUploader-Setup.exe" build/windows/installer/installer.nsi
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - name: Collect artifacts
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist-release | Out-Null
           $v = "${{ steps.ver.outputs.version }}"
-          Copy-Item build/bin/DropboxUploader-amd64-installer.exe "dist-release/DropboxUploader-Setup-$v.exe"
-          Copy-Item build/bin/DropboxUploader.exe "dist-release/DropboxUploader-portable-$v.exe"
+          Copy-Item build/bin/DropboxUploader-Setup.exe "dist-release/DropboxUploader-Setup-$v.exe"
+          Copy-Item build/bin/DropboxUploader-x64.exe "dist-release/DropboxUploader-portable-64bit-$v.exe"
+          Copy-Item build/bin/DropboxUploader-x86.exe "dist-release/DropboxUploader-portable-32bit-$v.exe"
           $sums = Get-ChildItem dist-release -Filter *.exe | ForEach-Object {
             (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower() + "  " + $_.Name
           }
@@ -93,10 +117,12 @@ jobs:
           files: dist-release/*
           generate_release_notes: true
           body: |
+            Works on Windows 7 SP1, 8.1, 10 and 11 (32-bit and 64-bit). Catalan, Spanish and English.
+
             ## Download
 
-            - **DropboxUploader-Setup-${{ steps.ver.outputs.version }}.exe**: installer (recommended). Adds a Start menu and desktop shortcut.
-            - **DropboxUploader-portable-${{ steps.ver.outputs.version }}.exe**: single file, no installation.
+            - **DropboxUploader-Setup-${{ steps.ver.outputs.version }}.exe**: installer (recommended). Picks 32/64-bit automatically, installs Microsoft WebView2 if missing, and adds Start menu and desktop shortcuts.
+            - **DropboxUploader-portable-64bit / 32bit**: single file, no installation (needs WebView2 already installed).
 
             Windows may show "Windows protected your PC" because the app is not code-signed:
             click **More info** → **Run anyway**.

@@ -54,45 +54,46 @@ func (it *Item) resetSession() {
 	it.SessionStarted = time.Time{}
 }
 
-// friendlyError turns technical errors into short messages for the queue panel.
+// friendlyError turns technical errors into translation keys ("err.code" or
+// "err.code|detail") that the queue panel shows in the user's language.
 func friendlyError(err error) string {
 	if err == nil {
 		return ""
 	}
 	if errors.Is(err, dbx.ErrNotLoggedIn) {
-		return "Not connected to Dropbox. Please reconnect and press Retry."
+		return "err.notConnected"
 	}
 	if errors.Is(err, fs.ErrNotExist) {
-		return "The file is no longer on this computer."
+		return "err.fileGone"
 	}
 	if errors.Is(err, fs.ErrPermission) {
-		return "Windows did not allow reading this file."
+		return "err.permission"
 	}
 	var pe *os.PathError
 	if errors.As(err, &pe) {
-		return "Could not read the file: " + pe.Err.Error()
+		return "err.readFile|" + pe.Err.Error()
 	}
 	var ae *dbx.APIError
 	if errors.As(err, &ae) {
 		s := ae.Summary
 		switch {
 		case strings.Contains(s, "insufficient_space"):
-			return "Your Dropbox is full."
+			return "err.dropboxFull"
 		case strings.Contains(s, "disallowed_name"), strings.Contains(s, "malformed_path"):
-			return "Dropbox does not accept this file name."
+			return "err.badName"
 		case strings.Contains(s, "too_large"):
-			return "The file is too large for Dropbox."
+			return "err.tooLarge"
 		case strings.Contains(s, "no_write_permission"):
-			return "You don't have permission to upload into this Dropbox folder."
+			return "err.noWritePermission"
 		case strings.Contains(s, "too_many_write_operations"), ae.Status == 429:
-			return "Dropbox is busy. Press Retry in a minute."
+			return "err.dropboxBusy"
 		case ae.Status >= 500:
-			return "Dropbox is having problems. Press Retry later."
+			return "err.dropboxDown"
 		}
-		return "Dropbox error: " + s
+		return "err.dropbox|" + s
 	}
 	if errors.Is(err, context.DeadlineExceeded) || dbx.Retryable(err) {
-		return "Network problem. Check the internet connection and press Retry."
+		return "err.network"
 	}
 	return err.Error()
 }

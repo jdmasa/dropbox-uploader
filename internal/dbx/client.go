@@ -211,7 +211,7 @@ func (c *Client) do(ctx context.Context, build func(token string) (*http.Request
 			continue
 		}
 		if resp.StatusCode == http.StatusUnauthorized {
-			return fmt.Errorf("%w (%s)", ErrNotLoggedIn, apiErr.Summary)
+			return ErrNotLoggedIn
 		}
 		return apiErr
 	}

@@ -1,5 +1,6 @@
 import './style.css';
 import { icon, hydrateIcons } from './icons.js';
+import { t, tn, tErr, setLang, getLang, applyStatic, LANGS } from './i18n.js';
 
 // Wails bindings (window.go.main.App.*) and runtime (window.runtime.*).
 const api = () => window.go.main.App;
@@ -34,21 +35,25 @@ function fmtBytes(n) {
 
 function fmtDuration(sec) {
   if (!sec || !isFinite(sec)) return '';
-  if (sec < 60) return 'less than a minute';
+  if (sec < 60) return t('dur.lessMin');
   const m = Math.round(sec / 60);
-  if (m < 60) return `${m} min`;
-  const h = Math.floor(m / 60);
-  return `${h} h ${m % 60} min`;
+  if (m < 60) return t('dur.min', { m });
+  return t('dur.hmin', { h: Math.floor(m / 60), m: m % 60 });
 }
 
 function fmtDate(s) {
   const d = new Date(s);
   if (isNaN(d) || d.getFullYear() < 1980) return '';
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  return d.toLocaleDateString(getLang(), { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+// Go errors arrive as "err.code" or "err.code|detail" and are translated here.
 function errText(e) {
-  return String(e?.message ?? e ?? 'Something went wrong');
+  return tErr(e?.message ?? e);
+}
+
+function isNotConnected(e) {
+  return String(e?.message ?? e ?? '').startsWith('err.notConnected');
 }
 
 function toast(msg, kind = '') {
@@ -61,7 +66,7 @@ function toast(msg, kind = '') {
 
 function showError(e) {
   const msg = errText(e);
-  if (/not connected to dropbox/i.test(msg)) {
+  if (isNotConnected(e)) {
     state.app.connected = false;
     showWelcome();
   }
@@ -77,9 +82,9 @@ function dialog(o) {
     const input = $('dialogInput');
     input.hidden = o.input === undefined;
     input.value = o.input ?? '';
-    $('dialogOk').textContent = o.okText || 'OK';
+    $('dialogOk').textContent = o.okText || t('common.ok');
     $('dialogOk').classList.toggle('danger', !!o.danger);
-    $('dialogCancel').textContent = o.cancelText || 'Cancel';
+    $('dialogCancel').textContent = o.cancelText || t('common.cancel');
     $('dialog').hidden = false;
     (input.hidden ? $('dialogOk') : input).focus();
     const done = (ok) => {
@@ -140,12 +145,20 @@ function mediaHTML(e, lazyAttr = 'data-src') {
   return icon(KIND_ICON[e.kind] || 'file');
 }
 
+function webviewMajor() {
+  const m = /(?:Edg|Chrome)\/(\d+)/.exec(navigator.userAgent);
+  return m ? +m[1] : 0;
+}
+
 // ---------- startup ----------
 
 async function init() {
   hydrateIcons();
   wireUI();
   state.app = await api().GetState();
+  setLang(state.app.lang);
+  fillLanguageSelects();
+  applyStatic();
   state.view = state.app.viewMode === 'list' ? 'list' : 'grid';
   $('workers').value = String(state.app.workers);
   setViewButtons();
@@ -153,7 +166,9 @@ async function init() {
 
   rt().EventsOn('queue:update', applyQueueUpdate);
   rt().EventsOn('queue:alldone', onAllDone);
-  rt().OnFileDrop(onExternalDrop, true);
+  // Dropping files from Explorer needs WebView2 113+; Windows 7/8.1 stop at 109.
+  if (webviewMajor() >= 113 || state.app.platform !== 'windows') rt().OnFileDrop(onExternalDrop, true);
+  else $('dropboxPanel').classList.remove('drop-target');
   applyQueueUpdate(await api().GetQueue());
 
   if (state.app.connected) {
@@ -173,8 +188,8 @@ async function loadAll() {
 
 function updateAccount() {
   const a = state.app;
-  $('accountName').textContent = a.connected ? (a.accountName || 'Connected') : 'Not connected';
-  $('accountEmail').textContent = a.connected ? `Connected as ${a.accountName}${a.accountEmail ? ' (' + a.accountEmail + ')' : ''}` : 'Not connected';
+  $('accountName').textContent = a.connected ? (a.accountName || t('account.connected')) : t('account.notConnected');
+  $('accountEmail').textContent = a.connected ? t('account.connectedAs', { name: a.accountName + (a.accountEmail ? ` (${a.accountEmail})` : '') }) : t('account.notConnected');
   updateUploadButton();
 }
 
@@ -183,7 +198,7 @@ function updateAccount() {
 function showWelcome() {
   $('welcome').hidden = false;
   $('appKeyBox').hidden = !state.app.needsAppKey;
-  $('redirectUri').textContent = state.app.redirectUri;
+  $('appKeyHelp').innerHTML = t('welcome.appKeyHelp', { uri: esc(state.app.redirectUri) });
   $('connectBtn').disabled = state.app.needsAppKey;
   updateAccount();
 }
@@ -193,23 +208,23 @@ function hideWelcome() { $('welcome').hidden = true; }
 async function connect() {
   const btn = $('connectBtn');
   btn.disabled = true;
-  btn.textContent = 'Waiting for Dropbox…';
-  $('connectHint').textContent = 'Sign in to Dropbox in your web browser and press "Allow". Then come back to this window.';
+  btn.textContent = t('welcome.waiting');
+  $('connectHint').textContent = t('welcome.hintWaiting');
   $('connectError').hidden = true;
   $('cancelConnect').hidden = false;
   try {
     state.app = await api().Connect();
     hideWelcome();
     await loadAll();
-    toast(`Connected to Dropbox as ${state.app.accountName}`, 'ok');
+    toast(t('toast.connected', { name: state.app.accountName }), 'ok');
   } catch (e) {
     $('connectError').textContent = errText(e);
     $('connectError').hidden = false;
   } finally {
     $('cancelConnect').hidden = true;
     btn.disabled = false;
-    btn.textContent = 'Connect to Dropbox';
-    $('connectHint').textContent = 'Your web browser will open so you can sign in to Dropbox and allow access. Then come back here.';
+    btn.textContent = t('welcome.connect');
+    $('connectHint').textContent = t('welcome.hint');
   }
 }
 
@@ -232,12 +247,19 @@ function renderPlaces() {
     }
   }
   $('places').innerHTML = state.places.map((p, i) =>
-    `<button class="place ${best === p ? 'active' : ''}" data-i="${i}" title="${esc(p.path)}">${icon(p.icon)}<span>${esc(p.name)}</span></button>`).join('');
+    `<button class="place ${best === p ? 'active' : ''}" data-i="${i}" title="${esc(p.path)}">${icon(p.icon)}<span>${esc(placeName(p))}</span></button>`).join('');
+}
+
+// Known folders are translated; drives show their volume label or a translated kind.
+function placeName(p) {
+  if (!p.drive) return t(`place.${p.icon}`);
+  const name = p.name || t(`drive.${p.icon}`);
+  return p.letter ? `${name} (${p.letter}:)` : name;
 }
 
 async function loadLocal(path) {
   const box = $('localFiles');
-  if (!state.local) box.innerHTML = '<div class="loading">Loading…</div>';
+  if (!state.local) box.innerHTML = `<div class="loading">${t('local.loading')}</div>`;
   try {
     const l = await api().ListLocal(path);
     l.entries = l.entries || [];
@@ -267,7 +289,7 @@ function renderLocal() {
   box.className = `files ${state.view}`;
   localLazy.disconnect();
   if (!l.entries.length) {
-    box.innerHTML = '<div class="empty">This folder is empty.</div>';
+    box.innerHTML = `<div class="empty">${t('local.empty')}</div>`;
     updateSelection();
     return;
   }
@@ -275,11 +297,11 @@ function renderLocal() {
     box.innerHTML = l.entries.map((e, i) => `
       <div class="tile ${e.kind} ${state.sel.has(e.path) ? 'selected' : ''}" data-i="${i}" draggable="true" title="${esc(e.name)}">
         <label class="sel"><input type="checkbox" tabindex="-1" ${state.sel.has(e.path) ? 'checked' : ''}></label>
-        ${e.kind === 'folder' ? '<button class="open-btn" data-open="1">Open</button>' : ''}
+        ${e.kind === 'folder' ? `<button class="open-btn" data-open="1">${t('local.open')}</button>` : ''}
         <div class="thumb" data-kind="${e.kind}" data-path="${esc(e.path)}">${mediaHTML(e)}
-          ${e.kind === 'video' ? `<span class="badge">${icon('play')}Video</span>` : ''}</div>
+          ${e.kind === 'video' ? `<span class="badge">${icon('play')}${t('local.video')}</span>` : ''}</div>
         <div class="name">${esc(e.name)}</div>
-        <div class="sub">${e.kind === 'folder' ? 'Folder' : fmtBytes(e.size)}</div>
+        <div class="sub">${e.kind === 'folder' ? t('local.folder') : fmtBytes(e.size)}</div>
       </div>`).join('');
   } else {
     box.innerHTML = l.entries.map((e, i) => `
@@ -344,9 +366,9 @@ function updateSelection() {
   const files = sel.length - folders;
   const bytes = sel.reduce((s, e) => s + (e.kind === 'folder' ? 0 : e.size), 0);
   const parts = [];
-  if (files) parts.push(`${files} file${files > 1 ? 's' : ''} (${fmtBytes(bytes)})`);
-  if (folders) parts.push(`${folders} folder${folders > 1 ? 's' : ''} with everything inside`);
-  $('selectionInfo').textContent = sel.length ? `Selected: ${parts.join(' and ')}` : '';
+  if (files) parts.push(tn('sel.files', files, { size: fmtBytes(bytes) }));
+  if (folders) parts.push(tn('sel.folders', folders));
+  $('selectionInfo').textContent = sel.length ? t('sel.selected', { what: parts.join(t('sel.and')) }) : '';
   $('clearSel').hidden = !sel.length;
   const total = state.local?.entries.length || 0;
   $('selectAll').checked = total > 0 && sel.length === total;
@@ -359,16 +381,16 @@ function updateUploadButton() {
   const connected = state.app?.connected;
   $('uploadBtn').disabled = !n || !connected || state.uploading;
   const dest = state.dbxPath ? state.dbxPath.split('/').pop() : 'Dropbox';
-  $('uploadCaption').innerHTML = !connected ? 'Connect to Dropbox first'
-    : n ? `Upload ${n} selected item${n > 1 ? 's' : ''} to <b>${esc(dest)}</b>`
-      : 'Select photos, videos or folders on the left';
+  $('uploadCaption').innerHTML = !connected ? esc(t('upload.captionNotConnected'))
+    : n ? tn('upload.caption', n, { dest: esc(dest) })
+      : esc(t('upload.captionNone'));
 }
 
 // ---------- right panel: Dropbox ----------
 
 async function loadDropbox(path) {
   const box = $('dbxFiles');
-  box.innerHTML = '<div class="loading">Loading your Dropbox…</div>';
+  box.innerHTML = `<div class="loading">${t('dbx.loading')}</div>`;
   try {
     const l = await api().ListDropbox(path);
     l.entries = l.entries || [];
@@ -377,7 +399,7 @@ async function loadDropbox(path) {
     renderDropbox();
   } catch (e) {
     box.innerHTML = `<div class="error-msg">${esc(errText(e))}</div>`;
-    if (/not connected/i.test(errText(e))) showError(e);
+    if (isNotConnected(e)) showError(e);
   }
 }
 
@@ -385,18 +407,18 @@ function renderDropbox() {
   const l = state.dbx;
   renderCrumbs($('dbxCrumbs'), l.crumbs, 'dbx');
   $('dbxUp').disabled = !l.path;
-  const destName = l.path || 'Dropbox (top level)';
+  const destName = l.path || t('dbx.root');
   $('destPath').textContent = destName;
   $('dropDest').textContent = l.path ? l.path.split('/').pop() : 'Dropbox';
   updateUploadButton();
   const box = $('dbxFiles');
   dbxLazy.disconnect();
   if (!l.entries.length) {
-    box.innerHTML = '<div class="empty">This Dropbox folder is empty.<br>Files you upload will appear here.</div>';
+    box.innerHTML = `<div class="empty">${t('dbx.empty')}</div>`;
     return;
   }
   box.innerHTML = l.entries.map((e, i) => `
-    <div class="tile ${e.kind}" data-i="${i}" ${e.kind === 'folder' ? `data-path="${esc(e.path)}"` : ''} title="${esc(e.name)}${e.kind === 'folder' ? ' – click to open' : ''}">
+    <div class="tile ${e.kind}" data-i="${i}" ${e.kind === 'folder' ? `data-path="${esc(e.path)}"` : ''} title="${esc(e.name)}${e.kind === 'folder' ? ` – ${t('dbx.clickToOpen')}` : ''}">
       <div class="thumb" data-kind="${e.kind}">${e.kind === 'folder' ? icon('folder')
         : e.thumb ? `<img data-src="${esc(dbxThumb(e.path))}" alt="">` : icon(KIND_ICON[e.kind] || 'file')}</div>
       <div class="name">${esc(e.name)}</div>
@@ -419,12 +441,12 @@ function onDropboxDblClick(ev) {
 }
 
 async function newFolder() {
-  const name = await dialog({ title: 'New folder in Dropbox', text: `Inside: ${state.dbxPath || 'Dropbox'}`, input: '', okText: 'Create' });
+  const name = await dialog({ title: t('dbx.newFolderTitle'), text: t('dbx.inside', { path: state.dbxPath || 'Dropbox' }), input: '', okText: t('dbx.create') });
   if (!name) return;
   try {
     const p = await api().CreateDropboxFolder(state.dbxPath, name);
     await loadDropbox(p);
-    toast(`Folder "${name}" created`, 'ok');
+    toast(t('dbx.folderCreated', { name }), 'ok');
   } catch (e) { showError(e); }
 }
 
@@ -444,8 +466,8 @@ async function enqueue(paths, dest) {
   updateUploadButton();
   try {
     const n = await api().Enqueue(paths, dest);
-    if (n === 0) toast('Those files are already in the upload list.');
-    else toast(`Added ${n} file${n > 1 ? 's' : ''} to the upload list`, 'ok');
+    if (n === 0) toast(t('toast.alreadyQueued'));
+    else toast(tn('toast.added', n), 'ok');
     expandQueue();
     setTab('uploading');
   } catch (e) {
@@ -534,15 +556,15 @@ function showPreview() {
   if (e.kind === 'video') {
     stage.innerHTML = `<video src="${esc(localFile(e.path))}" controls autoplay></video>`;
     stage.querySelector('video').onerror = () => {
-      stage.innerHTML = `<div class="noprev">${icon('video')}<p>This video can't be played here,<br>but it can still be uploaded.</p></div>`;
+      stage.innerHTML = `<div class="noprev">${icon('video')}<p>${t('preview.videoUnsupported')}</p></div>`;
     };
   } else if (BROWSER_IMAGES.test(e.name)) {
     stage.innerHTML = `<img src="${esc(localFile(e.path))}" alt="">`;
   } else {
     stage.innerHTML = e.thumb ? `<img src="${esc(localThumb(e.path))}" alt="">`
-      : `<div class="noprev">${icon('image')}<p>No preview for this kind of photo,<br>but it can still be uploaded.</p></div>`;
+      : `<div class="noprev">${icon('image')}<p>${t('preview.noPreview')}</p></div>`;
   }
-  $('previewCaption').textContent = `${e.name} · ${fmtBytes(e.size)} · ${previewIdx + 1} of ${previewList.length}`;
+  $('previewCaption').textContent = t('preview.caption', { name: e.name, size: fmtBytes(e.size), i: previewIdx + 1, n: previewList.length });
   $('previewPrev').hidden = previewIdx === 0;
   $('previewNext').hidden = previewIdx >= previewList.length - 1;
 }
@@ -598,9 +620,9 @@ function renderQueue() {
   const items = tabItems();
   $('queueSpacer').style.height = `${items.length * ROW_H}px`;
   const emptyText = {
-    uploading: state.q.summary?.paused ? 'Uploads are paused. Press Resume to continue.' : 'Nothing is uploading right now.',
-    queued: 'No files waiting.', done: 'No files uploaded yet.',
-    skipped: 'Files that are already in Dropbox will be listed here and not uploaded twice.', failed: 'No problems.',
+    uploading: state.q.summary?.paused ? t('queue.emptyPaused') : t('queue.emptyUploading'),
+    queued: t('queue.emptyQueued'), done: t('queue.emptyDone'),
+    skipped: t('queue.emptySkipped'), failed: t('queue.emptyFailed'),
   }[state.tab];
   $('queueEmpty').textContent = emptyText;
   $('queueEmpty').hidden = items.length > 0;
@@ -651,13 +673,13 @@ function createRow(it) {
 }
 
 const STATUS_VIEW = {
-  queued: ['', 'Waiting', ''],
-  checking: ['busy', 'Checking…', 'refresh'],
-  uploading: ['busy', 'Uploading', 'upload'],
-  finishing: ['busy', 'Saving in Dropbox…', 'cloud'],
-  done: ['ok', 'Uploaded', 'check'],
-  skipped: ['ok', 'Already in Dropbox', 'check'],
-  failed: ['bad', 'Failed', 'alert'],
+  queued: ['', ''],
+  checking: ['busy', 'refresh'],
+  uploading: ['busy', 'upload'],
+  finishing: ['busy', 'cloud'],
+  done: ['ok', 'check'],
+  skipped: ['ok', 'check'],
+  failed: ['bad', 'alert'],
 };
 
 function updateRow(el, it) {
@@ -665,7 +687,7 @@ function updateRow(el, it) {
   if (el._key === key) return;
   el._key = key;
   const dest = it.resultPath || it.dest;
-  el.querySelector('.d').textContent = `to ${dest.substring(0, dest.lastIndexOf('/')) || '/'}`;
+  el.querySelector('.d').textContent = t('queue.to', { folder: dest.substring(0, dest.lastIndexOf('/')) || '/' });
   el.querySelector('.qsize').textContent = fmtBytes(it.size);
   const pct = it.size ? Math.min(100, Math.floor((it.sent / it.size) * 100)) : (['done', 'skipped', 'finishing'].includes(it.status) ? 100 : 0);
   const prog = el.querySelector('.progress');
@@ -673,18 +695,19 @@ function updateRow(el, it) {
   prog.querySelector('.bar').style.width = `${pct}%`;
   el.querySelector('.pct').textContent = `${pct}%`;
   el.querySelector('.spd').textContent = it.status === 'uploading' && it.speed > 0 ? `${fmtBytes(it.speed)}/s` : '';
-  const [cls, label, ic] = STATUS_VIEW[it.status] || ['', it.status, ''];
+  const [cls, ic] = STATUS_VIEW[it.status] || ['', ''];
+  const label = t(`status.${it.status}`);
   const st = el.querySelector('.qstatus');
   st.className = `qstatus ${cls}`;
-  const text = it.status === 'failed' && it.error ? it.error : label;
+  const text = it.status === 'failed' && it.error ? tErr(it.error) : label;
   st.innerHTML = (ic ? icon(ic) : '') + `<span>${esc(text)}</span>`;
   st.title = text;
   const acts = [];
-  if (it.status === 'queued') acts.push(['top', 'top', 'Upload this next'], ['remove', 'close', 'Remove from the list']);
-  if (it.status === 'checking' || it.status === 'uploading') acts.push(['remove', 'close', 'Cancel this upload']);
-  if (it.status === 'failed') acts.push(['retry', 'refresh', 'Try again'], ['remove', 'close', 'Remove from the list']);
-  if (it.status === 'done' || it.status === 'skipped') acts.push(['open', 'external', 'Show in Dropbox'], ['remove', 'close', 'Remove from the list']);
-  el.querySelector('.qactions').innerHTML = acts.map(([a, ic2, t]) => `<button data-act="${a}" title="${t}">${icon(ic2)}</button>`).join('');
+  if (it.status === 'queued') acts.push(['top', 'top', 'act.top'], ['remove', 'close', 'act.remove']);
+  if (it.status === 'checking' || it.status === 'uploading') acts.push(['remove', 'close', 'act.cancel']);
+  if (it.status === 'failed') acts.push(['retry', 'refresh', 'act.retry'], ['remove', 'close', 'act.remove']);
+  if (it.status === 'done' || it.status === 'skipped') acts.push(['open', 'external', 'act.open'], ['remove', 'close', 'act.remove']);
+  el.querySelector('.qactions').innerHTML = acts.map(([a, ic2, k]) => `<button data-act="${a}" title="${esc(t(k))}">${icon(ic2)}</button>`).join('');
 }
 
 function onQueueClick(ev) {
@@ -707,16 +730,16 @@ function renderSummary() {
   const finished = s.done + s.skipped;
   const pct = s.totalBytes ? Math.floor((s.sentBytes / s.totalBytes) * 100) : 0;
   let title;
-  if (!total) title = 'No uploads yet';
-  else if (s.paused && (s.queued || s.uploading)) title = `Paused · ${finished} of ${total} files done`;
-  else if (s.busy) title = `Uploading… ${finished} of ${total} files done`;
-  else if (s.failed) title = `Finished · ${s.failed} file${s.failed > 1 ? 's' : ''} could not be uploaded`;
-  else title = `All done! ${finished} file${finished === 1 ? '' : 's'} in Dropbox`;
+  if (!total) title = t('queue.none');
+  else if (s.paused && (s.queued || s.uploading)) title = t('sum.paused', { done: finished, total });
+  else if (s.busy) title = t('sum.uploading', { done: finished, total });
+  else if (s.failed) title = tn('sum.failed', s.failed);
+  else title = tn('sum.allDone', finished);
   $('sumTitle').textContent = title;
   const parts = [];
-  if (total) parts.push(`${fmtBytes(s.sentBytes)} of ${fmtBytes(s.totalBytes)} (${pct}%)`);
+  if (total) parts.push(t('sum.bytes', { sent: fmtBytes(s.sentBytes), total: fmtBytes(s.totalBytes), pct }));
   if (s.busy && !s.paused && s.speed > 0) parts.push(`${fmtBytes(s.speed)}/s`);
-  if (s.busy && !s.paused && s.eta > 0) parts.push(`about ${fmtDuration(s.eta)} left`);
+  if (s.busy && !s.paused && s.eta > 0) parts.push(t('sum.left', { time: fmtDuration(s.eta) }));
   $('sumDetail').textContent = parts.join(' · ');
   const bar = $('sumBar');
   bar.style.width = `${total ? pct : 0}%`;
@@ -725,7 +748,7 @@ function renderSummary() {
 
   const pending = s.queued + s.uploading;
   const pb = $('pauseBtn');
-  pb.innerHTML = s.paused ? `${icon('play')} Resume` : `${icon('pause')} Pause`;
+  pb.innerHTML = s.paused ? `${icon('play')} ${esc(t('queue.resume'))}` : `${icon('pause')} ${esc(t('queue.pause'))}`;
   pb.disabled = !pending && !s.paused;
   $('cancelAllBtn').disabled = !pending && !s.failed;
 
@@ -735,7 +758,7 @@ function renderSummary() {
   }
   $('retryFailedBtn').hidden = !s.failed;
   $('clearFinishedBtn').hidden = !finished;
-  rt().WindowSetTitle(s.busy && total ? `${pct}% · Uploading ${finished}/${total} · Dropbox Uploader` : 'Dropbox Uploader');
+  rt().WindowSetTitle(s.busy && total ? t('title.uploading', { pct, done: finished, total }) : 'Dropbox Uploader');
 }
 
 function setTab(tab) {
@@ -748,8 +771,8 @@ function setTab(tab) {
 }
 
 function onAllDone(s) {
-  const msg = s.failed ? `Finished. ${s.failed} file${s.failed > 1 ? 's' : ''} could not be uploaded – see the Failed tab.`
-    : `All done! ${s.done} file${s.done === 1 ? '' : 's'} uploaded${s.skipped ? `, ${s.skipped} already in Dropbox` : ''}.`;
+  const msg = s.failed ? tn('alldone.failed', s.failed)
+    : tn('alldone.ok', s.done) + (s.skipped ? t('alldone.skipped', { n: s.skipped }) : '') + '.';
   toast(msg, s.failed ? 'bad' : 'ok');
   setTab(s.failed ? 'failed' : 'done');
   if (state.dbx) loadDropbox(state.dbxPath);
@@ -796,7 +819,33 @@ function setViewButtons() {
   $('viewList').classList.toggle('active', state.view === 'list');
 }
 
+function fillLanguageSelects() {
+  for (const id of ['language', 'welcomeLanguage']) {
+    $(id).innerHTML = LANGS.map((l) => `<option value="${l.code}">${l.name}</option>`).join('');
+    $(id).value = getLang();
+  }
+}
+
+// Switch language and redraw everything that contains text.
+async function changeLanguage(code) {
+  setLang(code);
+  fillLanguageSelects();
+  api().SetLanguage(code);
+  applyStatic();
+  updateAccount();
+  if (!$('welcome').hidden) showWelcome();
+  renderPlaces();
+  if (state.local) renderLocal();
+  if (state.dbx) renderDropbox();
+  renderSummary();
+  for (const el of rowEls.values()) el.remove();
+  rowEls.clear();
+  renderQueue();
+}
+
 function wireUI() {
+  $('language').onchange = (e) => changeLanguage(e.target.value);
+  $('welcomeLanguage').onchange = (e) => changeLanguage(e.target.value);
   $('connectBtn').onclick = connect;
   $('cancelConnect').onclick = () => api().CancelConnect();
   $('saveAppKey').onclick = async () => {
@@ -811,7 +860,7 @@ function wireUI() {
   document.addEventListener('click', () => { $('accountMenu').hidden = true; });
   $('openLogs').onclick = () => api().OpenLogFolder();
   $('disconnect').onclick = async () => {
-    const ok = await dialog({ title: 'Disconnect from Dropbox?', text: 'You will need to sign in again to upload. Waiting uploads are paused.', okText: 'Disconnect', danger: true });
+    const ok = await dialog({ title: t('dlg.disconnectTitle'), text: t('dlg.disconnectText'), okText: t('dlg.disconnect'), danger: true });
     if (!ok) return;
     state.app = await api().Disconnect();
     showWelcome();
@@ -831,9 +880,9 @@ function wireUI() {
     const files = await api().ChooseFiles().catch(showError);
     if (!files?.length) return;
     const ok = await dialog({
-      title: `Upload ${files.length} file${files.length > 1 ? 's' : ''}?`,
-      text: `They will be uploaded to: ${state.dbxPath || 'Dropbox (top level)'}`,
-      okText: 'Upload',
+      title: tn('dlg.uploadFilesTitle', files.length),
+      text: t('dlg.uploadFilesText', { dest: state.dbxPath || t('dbx.root') }),
+      okText: t('dlg.upload'),
     });
     if (ok) enqueue(files, state.dbxPath);
   };
@@ -871,7 +920,7 @@ function wireUI() {
   };
   $('pauseBtn').onclick = () => (state.q.summary?.paused ? api().Resume() : api().Pause());
   $('cancelAllBtn').onclick = async () => {
-    const ok = await dialog({ title: 'Cancel all uploads?', text: 'Files that are waiting or uploading will be removed from the list. Files already uploaded stay in Dropbox.', okText: 'Cancel uploads', cancelText: 'Keep uploading', danger: true });
+    const ok = await dialog({ title: t('dlg.cancelAllTitle'), text: t('dlg.cancelAllText'), okText: t('dlg.cancelAllOk'), cancelText: t('dlg.keepUploading'), danger: true });
     if (ok) api().CancelAll();
   };
   $('retryFailedBtn').onclick = () => { api().RetryFailed(); setTab('uploading'); };

@@ -24,10 +24,10 @@ func knownFolders() []Place {
 }
 
 func drives() []Place {
-	out := []Place{{Name: "Computer", Path: "/", Icon: "drive"}}
+	out := []Place{{Path: "/", Icon: "drive", Drive: true}}
 	if des, err := os.ReadDir("/Volumes"); err == nil {
 		for _, d := range des {
-			out = append(out, Place{Name: d.Name(), Path: filepath.Join("/Volumes", d.Name()), Icon: "usb"})
+			out = append(out, Place{Name: d.Name(), Path: filepath.Join("/Volumes", d.Name()), Icon: "usb", Drive: true})
 		}
 	}
 	return out

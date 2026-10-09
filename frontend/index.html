@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ca">
 <head>
   <meta charset="UTF-8"/>
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
@@ -14,19 +14,23 @@
       <span>Dropbox Uploader</span>
     </div>
     <div class="topbar-right">
-      <label class="workers" title="How many files upload at the same time">
-        Upload at once
+      <label class="workers" data-i18n-title="app.language">
+        <span data-icon="globe"></span>
+        <select id="language"></select>
+      </label>
+      <label class="workers" data-i18n-title="app.uploadAtOnceTitle">
+        <span data-i18n="app.uploadAtOnce"></span>
         <select id="workers">
           <option>1</option><option>2</option><option>3</option><option>4</option>
           <option>5</option><option>6</option><option>7</option><option>8</option>
         </select>
       </label>
       <div class="account" id="account">
-        <button class="btn ghost" id="accountBtn"><span data-icon="user"></span><span id="accountName">Not connected</span><span data-icon="chevron"></span></button>
+        <button class="btn ghost" id="accountBtn"><span data-icon="user"></span><span id="accountName"></span><span data-icon="chevron"></span></button>
         <div class="menu" id="accountMenu" hidden>
           <div class="menu-info" id="accountEmail"></div>
-          <button id="openLogs">Open log folder</button>
-          <button id="disconnect">Disconnect from Dropbox</button>
+          <button id="openLogs" data-i18n="menu.openLogs"></button>
+          <button id="disconnect" data-i18n="menu.disconnect"></button>
         </div>
       </div>
     </div>
@@ -36,101 +40,101 @@
     <!-- Left: this computer -->
     <section class="panel" id="localPanel">
       <div class="panel-head">
-        <h2><span data-icon="computer"></span> This computer</h2>
+        <h2><span data-icon="computer"></span> <span data-i18n="local.title"></span></h2>
         <div class="head-actions">
-          <button class="btn" id="chooseFolder"><span data-icon="folderOpen"></span> Choose folder…</button>
-          <button class="btn" id="chooseFiles"><span data-icon="image"></span> Choose files…</button>
+          <button class="btn" id="chooseFolder"><span data-icon="folderOpen"></span> <span data-i18n="local.chooseFolder"></span></button>
+          <button class="btn" id="chooseFiles"><span data-icon="image"></span> <span data-i18n="local.chooseFiles"></span></button>
         </div>
       </div>
       <div class="places" id="places"></div>
       <div class="toolbar">
-        <button class="btn icon" id="localUp" title="Go up one folder"><span data-icon="up"></span></button>
+        <button class="btn icon" id="localUp" data-i18n-title="nav.up"><span data-icon="up"></span></button>
         <nav class="crumbs" id="localCrumbs"></nav>
         <div class="toolbar-right">
-          <button class="btn icon" id="localRefresh" title="Refresh (F5)"><span data-icon="refresh"></span></button>
-          <div class="seg" role="group" aria-label="View">
-            <button id="viewGrid" title="Large previews"><span data-icon="grid"></span></button>
-            <button id="viewList" title="List"><span data-icon="list"></span></button>
+          <button class="btn icon" id="localRefresh" data-i18n-title="nav.refresh"><span data-icon="refresh"></span></button>
+          <div class="seg" role="group">
+            <button id="viewGrid" data-i18n-title="view.grid"><span data-icon="grid"></span></button>
+            <button id="viewList" data-i18n-title="view.list"><span data-icon="list"></span></button>
           </div>
         </div>
       </div>
       <div class="selectbar">
-        <label class="check"><input type="checkbox" id="selectAll"> Select all</label>
+        <label class="check"><input type="checkbox" id="selectAll"> <span data-i18n="sel.all"></span></label>
         <span id="selectionInfo" class="muted"></span>
-        <button class="btn link" id="clearSel" hidden>Clear selection</button>
+        <button class="btn link" id="clearSel" data-i18n="sel.clear" hidden></button>
       </div>
       <div class="files" id="localFiles" tabindex="0"></div>
-      <div class="hint">Click to select · Double-click a folder to open it · Double-click a photo or video to preview it</div>
+      <div class="hint" data-i18n="local.hint"></div>
     </section>
 
     <!-- Middle: upload button -->
     <div class="middle">
       <button class="upload-btn" id="uploadBtn" disabled>
         <span data-icon="arrowRight"></span>
-        <span class="upload-label">Upload</span>
+        <span class="upload-label" data-i18n="upload.button"></span>
       </button>
-      <div class="middle-caption" id="uploadCaption">Select photos, videos or folders on the left</div>
+      <div class="middle-caption" id="uploadCaption"></div>
     </div>
 
     <!-- Right: Dropbox -->
     <section class="panel drop-target" id="dropboxPanel">
       <div class="panel-head">
-        <h2><span data-icon="cloud"></span> Your Dropbox</h2>
+        <h2><span data-icon="cloud"></span> <span data-i18n="dbx.title"></span></h2>
         <div class="head-actions">
-          <button class="btn" id="newFolder"><span data-icon="folderPlus"></span> New folder</button>
-          <button class="btn" id="openDropboxWeb" title="Open this folder on dropbox.com"><span data-icon="external"></span></button>
+          <button class="btn" id="newFolder"><span data-icon="folderPlus"></span> <span data-i18n="dbx.newFolder"></span></button>
+          <button class="btn" id="openDropboxWeb" data-i18n-title="dbx.openWeb"><span data-icon="external"></span></button>
         </div>
       </div>
       <div class="toolbar">
-        <button class="btn icon" id="dbxUp" title="Go up one folder"><span data-icon="up"></span></button>
+        <button class="btn icon" id="dbxUp" data-i18n-title="nav.up"><span data-icon="up"></span></button>
         <nav class="crumbs" id="dbxCrumbs"></nav>
         <div class="toolbar-right">
-          <button class="btn icon" id="dbxRefresh" title="Refresh"><span data-icon="refresh"></span></button>
+          <button class="btn icon" id="dbxRefresh" data-i18n-title="dbx.refresh"><span data-icon="refresh"></span></button>
         </div>
       </div>
       <div class="files" id="dbxFiles"></div>
       <div class="destination">
         <span data-icon="target"></span>
         <div>
-          <div class="muted small">Files will be uploaded to</div>
+          <div class="muted small" data-i18n="dbx.destLabel"></div>
           <div class="dest-path" id="destPath">Dropbox</div>
         </div>
       </div>
-      <div class="drop-overlay"><div><span data-icon="upload"></span><p>Drop here to upload into<br><b id="dropDest">this folder</b></p></div></div>
+      <div class="drop-overlay"><div><span data-icon="upload"></span><p><span data-i18n="dbx.dropHere"></span><br><b id="dropDest"></b></p></div></div>
     </section>
   </main>
 
   <!-- Bottom: upload queue -->
   <section class="queue" id="queue">
-    <div class="queue-resize" id="queueResize" title="Drag to resize"></div>
+    <div class="queue-resize" id="queueResize"></div>
     <div class="queue-summary">
-      <button class="btn icon" id="queueToggle" title="Show or hide the upload list"><span data-icon="chevronDown"></span></button>
+      <button class="btn icon" id="queueToggle" data-i18n-title="queue.toggle"><span data-icon="chevronDown"></span></button>
       <div class="summary-main">
         <div class="summary-line">
-          <b id="sumTitle">No uploads yet</b>
+          <b id="sumTitle"></b>
           <span class="muted" id="sumDetail"></span>
         </div>
         <div class="progress big"><div class="bar" id="sumBar"></div></div>
       </div>
       <div class="summary-actions">
-        <button class="btn" id="pauseBtn"><span data-icon="pause"></span> Pause</button>
-        <button class="btn" id="cancelAllBtn"><span data-icon="stop"></span> Cancel all</button>
+        <button class="btn" id="pauseBtn"></button>
+        <button class="btn" id="cancelAllBtn"><span data-icon="stop"></span> <span data-i18n="queue.cancelAll"></span></button>
       </div>
     </div>
     <div class="queue-body" id="queueBody">
       <div class="tabs">
-        <button data-tab="uploading" class="active">Uploading <span class="count" id="cUploading">0</span></button>
-        <button data-tab="queued">Waiting <span class="count" id="cQueued">0</span></button>
-        <button data-tab="done">Done <span class="count" id="cDone">0</span></button>
-        <button data-tab="skipped">Already in Dropbox <span class="count" id="cSkipped">0</span></button>
-        <button data-tab="failed">Failed <span class="count bad" id="cFailed">0</span></button>
+        <button data-tab="uploading" class="active"><span data-i18n="tab.uploading"></span> <span class="count" id="cUploading">0</span></button>
+        <button data-tab="queued"><span data-i18n="tab.queued"></span> <span class="count" id="cQueued">0</span></button>
+        <button data-tab="done"><span data-i18n="tab.done"></span> <span class="count" id="cDone">0</span></button>
+        <button data-tab="skipped"><span data-i18n="tab.skipped"></span> <span class="count" id="cSkipped">0</span></button>
+        <button data-tab="failed"><span data-i18n="tab.failed"></span> <span class="count bad" id="cFailed">0</span></button>
         <div class="tabs-right">
-          <button class="btn small" id="retryFailedBtn" hidden><span data-icon="refresh"></span> Retry all failed</button>
-          <button class="btn small" id="clearFinishedBtn" hidden><span data-icon="broom"></span> Clear finished</button>
+          <button class="btn small" id="retryFailedBtn" hidden><span data-icon="refresh"></span> <span data-i18n="queue.retryFailed"></span></button>
+          <button class="btn small" id="clearFinishedBtn" hidden><span data-icon="broom"></span> <span data-i18n="queue.clearFinished"></span></button>
         </div>
       </div>
       <div class="queue-list" id="queueList"><div class="queue-spacer" id="queueSpacer"></div></div>
-      <div class="queue-empty" id="queueEmpty">Nothing here.</div>
+      <div class="queue-empty" id="queueEmpty"></div>
     </div>
   </section>
 </div>
@@ -138,28 +142,28 @@
 <!-- Welcome / connect -->
 <div class="overlay" id="welcome" hidden>
   <div class="dialog welcome">
+    <div class="welcome-lang"><span data-icon="globe"></span><select id="welcomeLanguage"></select></div>
     <span class="welcome-icon" data-icon="cloud"></span>
-    <h1>Welcome to Dropbox Uploader</h1>
-    <p>Upload your photos and videos to Dropbox quickly and safely.</p>
+    <h1 data-i18n="welcome.title"></h1>
+    <p data-i18n="welcome.subtitle"></p>
     <div id="appKeyBox" hidden>
-      <p class="small muted">First-time setup: paste the <b>App key</b> from the Dropbox App Console.
-        The app's redirect URI must be <code id="redirectUri"></code>.</p>
-      <input id="appKeyInput" class="input" placeholder="App key" spellcheck="false">
-      <button class="btn" id="saveAppKey">Save</button>
+      <p class="small muted" id="appKeyHelp"></p>
+      <input id="appKeyInput" class="input" data-i18n-placeholder="welcome.appKeyPlaceholder" spellcheck="false">
+      <button class="btn" id="saveAppKey" data-i18n="common.save"></button>
     </div>
-    <button class="btn primary huge" id="connectBtn">Connect to Dropbox</button>
-    <p><button class="btn link" id="cancelConnect" hidden>Cancel</button></p>
-    <p class="small muted" id="connectHint">Your web browser will open so you can sign in to Dropbox and allow access. Then come back here.</p>
+    <button class="btn primary huge" id="connectBtn" data-i18n="welcome.connect"></button>
+    <p><button class="btn link" id="cancelConnect" data-i18n="common.cancel" hidden></button></p>
+    <p class="small muted" id="connectHint" data-i18n="welcome.hint"></p>
     <p class="error" id="connectError" hidden></p>
   </div>
 </div>
 
 <!-- Preview -->
 <div class="overlay dark" id="preview" hidden>
-  <button class="preview-close" id="previewClose" title="Close (Esc)"><span data-icon="close"></span></button>
-  <button class="preview-nav prev" id="previewPrev" title="Previous (←)"><span data-icon="chevronLeft"></span></button>
+  <button class="preview-close" id="previewClose" data-i18n-title="preview.close"><span data-icon="close"></span></button>
+  <button class="preview-nav prev" id="previewPrev" data-i18n-title="preview.prev"><span data-icon="chevronLeft"></span></button>
   <div class="preview-stage" id="previewStage"></div>
-  <button class="preview-nav next" id="previewNext" title="Next (→)"><span data-icon="chevronRight"></span></button>
+  <button class="preview-nav next" id="previewNext" data-i18n-title="preview.next"><span data-icon="chevronRight"></span></button>
   <div class="preview-caption" id="previewCaption"></div>
 </div>
 
@@ -170,8 +174,8 @@
     <p id="dialogText"></p>
     <input id="dialogInput" class="input" hidden spellcheck="false">
     <div class="dialog-buttons">
-      <button class="btn" id="dialogCancel">Cancel</button>
-      <button class="btn primary" id="dialogOk">OK</button>
+      <button class="btn" id="dialogCancel"></button>
+      <button class="btn primary" id="dialogOk"></button>
     </div>
   </div>
 </div>

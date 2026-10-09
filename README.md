@@ -2,6 +2,9 @@
 
 A simple Windows desktop app for **uploading** photos and videos to Dropbox without syncing anything back to the computer.
 
+- **Languages:** Catalan (default), Spanish and English. Switch with the globe menu at the top; the choice is remembered.
+- **Windows:** 7 SP1, 8.1, 10 and 11, both 32-bit and 64-bit.
+
 - **Left panel:** this computer. Browse folders with large photo and video previews, and tick files or whole folders.
 - **Right panel:** your Dropbox. Pick the folder to upload into, or create a new one.
 - **Bottom panel:** the upload list, with overall and per-file progress, speed and time left. You can pause, cancel, retry, or move a file to the front.
@@ -54,12 +57,23 @@ Then either:
 - **Build the key into the app (recommended):** in the GitHub repo, go to **Settings → Secrets and variables → Actions → Variables** and add `DROPBOX_APP_KEY`. Releases will then include it.
 - **Or paste it on first run:** without a built-in key, the welcome screen asks for it once. It is stored in `%APPDATA%\DropboxUploader\config.json`.
 
-## Download and install (Windows 10/11)
+## Download and install
 
 Download `DropboxUploader-Setup-x.y.z.exe` from the [Releases](../../releases) page and run it. The installer:
 
+- picks the 32-bit or 64-bit app automatically;
 - adds Start-menu and desktop shortcuts;
-- installs Microsoft WebView2 if it is missing (it is already part of Windows 10/11).
+- installs Microsoft WebView2 if it is missing. It is already part of Windows 10/11; on Windows 7/8.1, Microsoft's installer provides version 109, the last one for those systems;
+- speaks Catalan, Spanish or English, following the Windows language.
+
+### Windows 7 and 8.1
+
+The app is built with [go-legacy-win7](https://github.com/thongtech/go-legacy-win7), a current Go release patched to keep supporting Windows 7/8/8.1 (official Go dropped them in 1.21). On these systems:
+
+- Dragging files in from Explorer is turned off, because it needs WebView2 113+ and these systems stop at 109. The **Choose folder…** / **Choose files…** buttons and dragging between the app's own panels still work.
+- No Windows notification appears when uploads finish; the in-app message still shows.
+- HEIC (iPhone) photos show an icon instead of a preview unless a HEIF codec is installed.
+- Windows 8.0 is not supported (WebView2 never ran on it). It can be updated to 8.1 for free.
 
 The app is not code-signed, so Windows SmartScreen may show "Windows protected your PC". Click **More info → Run anyway**.
 
@@ -68,6 +82,7 @@ A portable single `.exe` is also attached to each release.
 ## Development
 
 Requirements: Go 1.26+, Node 20+, and the Wails CLI (`go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0`).
+For builds that run on Windows 7/8.1, use the [go-legacy-win7](https://github.com/thongtech/go-legacy-win7/releases) toolchain instead of official Go (CI does this).
 
 ```sh
 wails dev                       # live-reloading dev build (macOS/Windows)
@@ -75,9 +90,10 @@ go test -race ./internal/...    # unit tests (uploader engine, content hash, fil
 
 # Windows build from any OS (the Windows build is pure Go):
 wails build -platform windows/amd64 -ldflags "-X main.dropboxAppKey=YOUR_KEY"
-# Windows installer (needs NSIS's makensis on PATH):
-wails build -platform windows/amd64 -nsis -ldflags "-X main.dropboxAppKey=YOUR_KEY"
+wails build -platform windows/386 -o DropboxUploader-x86.exe   # 32-bit
 ```
+
+The installer script is `build/windows/installer/installer.nsi`; see the comment at its top, or the `Build installer` step in `.github/workflows/build.yml`.
 
 ### Project layout
 
@@ -90,7 +106,9 @@ wails build -platform windows/amd64 -nsis -ldflags "-X main.dropboxAppKey=YOUR_K
 | `internal/localfs` | Drives and known folders, folder listing, thumbnails (Go decoders + Windows thumbnail provider) |
 | `internal/media` | Serves thumbnails and files to the window through Wails' asset server |
 | `internal/sysutil` | Keep the PC awake while uploading |
-| `frontend/` | Plain HTML/CSS/JS UI (built with Vite) |
+| `frontend/` | Plain HTML/CSS/JS UI (built with Vite, targeting Chromium 109) |
+| `frontend/src/i18n.js` | All UI texts in Catalan, Spanish and English |
+| `internal/i18n` | The few texts shown by Go: close dialog, notification, file pickers, sign-in page |
 
 ### Files on the user's PC
 
@@ -103,7 +121,7 @@ wails build -platform windows/amd64 -nsis -ldflags "-X main.dropboxAppKey=YOUR_K
 
 ## Releasing
 
-Push a tag. GitHub Actions runs the tests, builds the installer and portable `.exe` on Windows, and publishes a GitHub Release:
+Push a tag. GitHub Actions runs the tests, builds the 32/64-bit apps and the installer on Windows, and publishes a GitHub Release:
 
 ```sh
 git tag v1.0.0

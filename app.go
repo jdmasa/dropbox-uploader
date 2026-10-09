@@ -21,6 +21,7 @@ import (
 
 	"dropboxuploader/internal/config"
 	"dropboxuploader/internal/dbx"
+	"dropboxuploader/internal/i18n"
 	"dropboxuploader/internal/localfs"
 	"dropboxuploader/internal/media"
 	"dropboxuploader/internal/sysutil"
@@ -44,6 +45,7 @@ type App struct {
 	mu            sync.Mutex
 	client        *dbx.Client
 	cancelConnect context.CancelFunc
+	notify        bool // system notifications available (Windows 10+)
 }
 
 func NewApp() *App {
@@ -70,7 +72,9 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	_ = runtime.InitializeNotifications(ctx)
+	if sysutil.ToastsSupported() {
+		a.notify = runtime.InitializeNotifications(ctx) == nil
+	}
 	a.queue.Start()
 }
 
@@ -82,15 +86,18 @@ func (a *App) beforeClose(ctx context.Context) bool {
 	if !a.queue.Busy() {
 		return false
 	}
+	lang := a.lang()
+	yes, no := i18n.T(lang, "yes"), i18n.T(lang, "no")
 	choice, err := runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
 		Type:          runtime.QuestionDialog,
-		Title:         "Uploads are still running",
-		Message:       "Some files are still uploading.\n\nIf you close now, they will continue the next time you open Dropbox Uploader.\n\nClose anyway?",
-		Buttons:       []string{"Yes", "No"},
-		DefaultButton: "No",
-		CancelButton:  "No",
+		Title:         i18n.T(lang, "close.title"),
+		Message:       i18n.T(lang, "close.message"),
+		Buttons:       []string{yes, no},
+		DefaultButton: no,
+		CancelButton:  no,
 	})
-	return err == nil && choice != "Yes" && choice != "Ok"
+	// On Windows the system buttons always answer "Yes"/"No".
+	return err == nil && choice != yes && choice != "Yes" && choice != "Ok"
 }
 
 // secondInstance brings the existing window to the front when the app is opened twice.
@@ -102,7 +109,16 @@ func (a *App) secondInstance(options.SecondInstanceData) {
 func (a *App) shutdown(ctx context.Context) {
 	a.queue.Close()
 	sysutil.KeepAwake(false)
-	runtime.CleanupNotifications(ctx)
+	if a.notify {
+		runtime.CleanupNotifications(ctx)
+	}
+}
+
+func (a *App) lang() string {
+	if l := a.cfg.Get().Lang; i18n.Valid(l) {
+		return l
+	}
+	return i18n.Default
 }
 
 func (a *App) appKey() string {
@@ -134,12 +150,16 @@ func (a *App) allDone(s uploader.RunStats) {
 		return
 	}
 	runtime.EventsEmit(a.ctx, "queue:alldone", s)
-	body := fmt.Sprintf("%d files uploaded.", s.Done)
+	lang := a.lang()
+	body := i18n.T(lang, "notify.done", s.Done)
 	if s.Skipped > 0 {
-		body += fmt.Sprintf(" %d were already in Dropbox.", s.Skipped)
+		body += i18n.T(lang, "notify.skip", s.Skipped)
 	}
 	if s.Failed > 0 {
-		body += fmt.Sprintf(" %d could not be uploaded.", s.Failed)
+		body += i18n.T(lang, "notify.fail", s.Failed)
+	}
+	if !a.notify {
+		return
 	}
 	_ = runtime.SendNotification(a.ctx, runtime.NotificationOptions{
 		ID:    fmt.Sprintf("done-%d", time.Now().Unix()),
@@ -151,6 +171,7 @@ func (a *App) allDone(s uploader.RunStats) {
 // ---- State & login ----
 
 type State struct {
+	Lang         string `json:"lang"`
 	Connected    bool   `json:"connected"`
 	NeedsAppKey  bool   `json:"needsAppKey"`
 	AccountName  string `json:"accountName"`
@@ -167,6 +188,7 @@ type State struct {
 func (a *App) GetState() State {
 	c := a.cfg.Get()
 	return State{
+		Lang:         a.lang(),
 		Connected:    a.dropbox() != nil,
 		NeedsAppKey:  a.appKey() == "",
 		AccountName:  c.AccountName,
@@ -185,25 +207,32 @@ func (a *App) GetState() State {
 func (a *App) SetAppKey(key string) error {
 	key = strings.TrimSpace(key)
 	if key == "" {
-		return errors.New("please paste the App key")
+		return errors.New("err.appKeyEmpty")
 	}
 	return a.cfg.Update(func(c *config.Config) { c.AppKey = key })
+}
+
+// SetLanguage stores the UI language ("ca", "es" or "en").
+func (a *App) SetLanguage(lang string) {
+	if i18n.Valid(lang) {
+		_ = a.cfg.Update(func(c *config.Config) { c.Lang = lang })
+	}
 }
 
 // Connect opens Dropbox's sign-in page in the browser and waits for the user to allow access.
 func (a *App) Connect() (State, error) {
 	key := a.appKey()
 	if key == "" {
-		return a.GetState(), errors.New("the Dropbox App key is missing")
+		return a.GetState(), errors.New("err.appKeyMissing")
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, 10*time.Minute)
 	defer cancel()
 	a.mu.Lock()
 	a.cancelConnect = cancel
 	a.mu.Unlock()
-	refresh, err := dbx.Login(ctx, key, func(u string) { runtime.BrowserOpenURL(a.ctx, u) })
+	refresh, err := dbx.Login(ctx, key, a.lang(), func(u string) { runtime.BrowserOpenURL(a.ctx, u) })
 	if errors.Is(err, context.Canceled) {
-		return a.GetState(), errors.New("sign-in cancelled")
+		return a.GetState(), errors.New("err.signinCancelled")
 	}
 	if err != nil {
 		log.Printf("login: %v", err)
@@ -268,9 +297,9 @@ func (a *App) ListLocal(dir string) (*localfs.Listing, error) {
 func friendlyLocalError(err error) error {
 	switch {
 	case errors.Is(err, os.ErrNotExist):
-		return errors.New("This folder doesn't exist any more (was a USB drive removed?)")
+		return errors.New("err.folderGone")
 	case errors.Is(err, os.ErrPermission):
-		return errors.New("Windows does not allow opening this folder")
+		return errors.New("err.folderDenied")
 	}
 	return err
 }
@@ -278,7 +307,7 @@ func friendlyLocalError(err error) error {
 // ChooseFolder shows the Windows folder picker.
 func (a *App) ChooseFolder() (string, error) {
 	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
-		Title:            "Choose a folder",
+		Title:            i18n.T(a.lang(), "pick.folder"),
 		DefaultDirectory: a.cfg.Get().LastLocal,
 	})
 }
@@ -286,11 +315,11 @@ func (a *App) ChooseFolder() (string, error) {
 // ChooseFiles shows the Windows file picker for photos and videos.
 func (a *App) ChooseFiles() ([]string, error) {
 	return runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
-		Title:            "Choose photos and videos",
+		Title:            i18n.T(a.lang(), "pick.files"),
 		DefaultDirectory: a.cfg.Get().LastLocal,
 		Filters: []runtime.FileFilter{
-			{DisplayName: "Photos and videos", Pattern: "*.jpg;*.jpeg;*.png;*.heic;*.gif;*.webp;*.mp4;*.mov;*.m4v;*.avi;*.mts;*.3gp"},
-			{DisplayName: "All files", Pattern: "*.*"},
+			{DisplayName: i18n.T(a.lang(), "filter.media"), Pattern: "*.jpg;*.jpeg;*.png;*.heic;*.gif;*.webp;*.mp4;*.mov;*.m4v;*.avi;*.mts;*.3gp"},
+			{DisplayName: i18n.T(a.lang(), "filter.all"), Pattern: "*.*"},
 		},
 	})
 }
@@ -374,7 +403,7 @@ func (a *App) CreateDropboxFolder(parent, name string) (string, error) {
 	}
 	name = strings.TrimSpace(name)
 	if name == "" || strings.ContainsAny(name, `/\`) {
-		return "", errors.New("please type a folder name without / or \\")
+		return "", errors.New("err.folderName")
 	}
 	p := path.Join("/", parent, name)
 	ctx, cancel := context.WithTimeout(a.ctx, time.Minute)
